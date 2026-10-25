@@ -40,6 +40,10 @@ jobs:
           curl -fsSL -O "https://github.com/holzschu/ios_system/releases/download/${IOS_SYSTEM_VER}/ios_system.xcframework.zip"
           unzip -q ios_system.xcframework.zip
           curl -fsSL -O "https://github.com/holzschu/ios_system/releases/download/${IOS_SYSTEM_VER}/ios_error.h"
+          # Since v3.0.5, ios_error.h declares ios_signal() with sig_t, which is hidden when a
+          # library (e.g. lua53) is compiled in POSIX mode. Spell out the same type instead.
+          sed -i '' 's/extern sig_t ios_signal(int signal, sig_t function);/extern void (*ios_signal(int signal, void (*function)(int)))(int);/' ios_error.h
+          grep -n 'ios_signal(' ios_error.h
           ls ios_system.xcframework
 
       - name: GNU make
