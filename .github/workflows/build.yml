@@ -1,0 +1,94 @@
+# e-upTeX / dvipdfmx (+ kpathsea, ptexenc and the other engines of the upstream script)
+# cross-compiled for iOS (arm64) as .xcframework, on a GitHub-hosted macOS runner.
+# Source: holzschu/texlive-source (TeX Live 2026 with iOS patches), pinned by commit.
+name: build-tex-ios
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TL_REPO: holzschu/texlive-source
+  TL_SHA: bfd21c360970869879d5ad89a2df8032962337ca
+  IOS_SYSTEM_VER: v3.0.6
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TL_REPO }}
+          ref: ${{ env.TL_SHA }}
+          path: tl
+
+      - name: Environment
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: Fetch ios_system
+        working-directory: tl
+        run: |
+          curl -fsSL -O "https://github.com/holzschu/ios_system/releases/download/${IOS_SYSTEM_VER}/ios_system.xcframework.zip"
+          unzip -q ios_system.xcframework.zip
+          curl -fsSL -O "https://github.com/holzschu/ios_system/releases/download/${IOS_SYSTEM_VER}/ios_error.h"
+          ls ios_system.xcframework
+
+      - name: GNU make
+        run: brew install make
+
+      - name: Framework Info.plist template
+        working-directory: tl
+        run: |
+          [ -f basic_Info.plist ] || cp ../basic_Info.plist .
+
+      - name: Build
+        working-directory: tl
+        run: |
+          GMAKE="$(brew --prefix make)/libexec/gnubin/make"
+          # The upstream script assumes the author's Intel Mac.
+          sed -e "s#--build=x86_64-apple-darwin#--build=aarch64-apple-darwin#g" \
+              -e "s#MAKE=/usr/local/bin/make#MAKE=${GMAKE}#g" \
+              build_command.sh > build_ci.sh
+          bash build_ci.sh
+
+      - name: Check
+        working-directory: tl
+        run: |
+          ls -d *.xcframework || true
+          status=0
+          for f in euptex ptexenc xdvipdfmx kpathsea; do
+            if [ -d "$f.xcframework" ]; then
+              file "$f.xcframework"/*/"$f.framework/$f"
+            else
+              echo "missing: $f.xcframework"; status=1
+            fi
+          done
+          if [ $status -ne 0 ]; then tail -n 200 build_cross.log; fi
+          exit $status
+
+      - name: Package
+        if: always()
+        working-directory: tl
+        run: |
+          mkdir -p ../out
+          for d in *.xcframework; do
+            [ -d "$d" ] && [ "$d" != ios_system.xcframework ] && zip -qry "../out/$d.zip" "$d"
+          done
+          cp build_cross.log ../out/ 2>/dev/null || true
+          cd ../out && ls && (shasum -a 256 *.zip > SHA256SUMS || true)
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tex-ios-xcframeworks
+          path: out/
+          retention-days: 90
