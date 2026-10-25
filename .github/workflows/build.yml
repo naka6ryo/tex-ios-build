@@ -49,6 +49,17 @@ jobs:
       - name: GNU make
         run: brew install make
 
+      # Cross-compiling web2c needs native tangle, ctangle, tie and otangle on the build machine
+      # (the upstream author's Mac has TeX Live installed). configure accepts their full paths.
+      - name: Native web tools
+        run: |
+          brew install texlive
+          for t in tangle ctangle tie otangle; do
+            p="$(command -v "$t" || true)"
+            echo "$t: ${p:-missing}"
+            if [ -n "$p" ]; then echo "$(echo "$t" | tr a-z A-Z)=$p" >> "$GITHUB_ENV"; fi
+          done
+
       - name: Framework Info.plist template
         working-directory: tl
         run: |
