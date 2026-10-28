@@ -30,6 +30,14 @@ GitHub Actions のクラウドの Mac で、TeX Live 2026 の **e-upTeX**（pLaT
 - 成功した実行: [run 40243401382](https://github.com/naka6ryo/tex-ios-build/actions/runs/40243401382)（ビルド 約 23 分）。xcframework 21 個・計 45 MB
 - e-upTeX `3.141592653-p4.1.2-u2.02-251130`（TeX Live 2026）と dvipdfmx `20260317`。iOS（arm64、SDK 18.5、iOS 14 以上）向けの動的ライブラリで、入口は `dlleuptexmain` と `dlldvipdfmxmain`
 
+## upBibTeX を足した（2026-10-28）
+
+- 上流のスクリプトは 8 ビットの bibtex8 だけを `bibtex` として作る。日本語の文献スタイル（`is.kanji.str$` を使う jplain・jwiss など）には pBibTeX が要る
+- TeX Live 2026 の `pbibtex` は `upbibtex` と同じプログラムで、`pbibtex` の名前で呼ぶと EUC（pLaTeX 用）で動く（`texk/web2c/uptexdir/kanji.c` の `init_default_kanji_select`）
+- iOS 向けの木では web2c のプログラムがすべて `$@.dylib` として作られるので、本体のビルドのあとで `make upbibtex` を足すだけで `upbibtex.dylib` ができる。kpathsea・ptexenc への参照を framework に付け替えて `upbibtex.xcframework` にする（入口は `main`）
+- 成功した実行: [run 40634432955](https://github.com/naka6ryo/tex-ios-build/actions/runs/40634432955)
+- e-upTeX にはもともと SyncTeX が入っている（`--disable-synctex` は SyncTeX の単体の道具と部品を作らないだけで、エンジンは `-synctex=NUMBER` を受け付ける）
+
 ## ライセンス
 
 - このリポジトリのワークフローと設定ファイルは自由に使ってよい（CC0）
