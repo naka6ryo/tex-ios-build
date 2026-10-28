@@ -75,12 +75,44 @@ jobs:
               build_command.sh > build_ci.sh
           bash build_ci.sh
 
+      # upBibTeX is not in the upstream script (it builds only the 8-bit bibtex8 as "bibtex").
+      # The iOS fork links every web2c program as $@.dylib, so it can be made from the same tree.
+      # TeX Live installs pbibtex as a link to upbibtex: called as "pbibtex", it runs in EUC mode
+      # (texk/web2c/uptexdir/kanji.c, init_default_kanji_select).
+      - name: upBibTeX (pbibtex)
+        working-directory: tl
+        run: |
+          GMAKE="$(brew --prefix make)/libexec/gnubin/make"
+          ( cd Work/texk/web2c && "$GMAKE" upbibtex ) > upbibtex_build.log 2>&1 || { tail -n 80 upbibtex_build.log; exit 1; }
+          tail -n 5 upbibtex_build.log
+          f=upbibtex
+          lib=Work/texk/web2c/.libs/upbibtex.dylib
+          [ -f "$lib" ] || lib=Work/texk/web2c/upbibtex.dylib
+          rm -rf Frameworks/$f.framework && mkdir -p Frameworks/$f.framework
+          cp "$lib" Frameworks/$f.framework/$f
+          cp basic_Info.plist Frameworks/$f.framework/Info.plist
+          plutil -replace CFBundleExecutable -string $f Frameworks/$f.framework/Info.plist
+          plutil -replace CFBundleName -string $f Frameworks/$f.framework/Info.plist
+          plutil -replace CFBundleIdentifier -string Nicolas-Holzschuch.$f Frameworks/$f.framework/Info.plist
+          install_name_tool -id @rpath/$f.framework/$f Frameworks/$f.framework/$f
+          # Point the kpathsea and ptexenc dependencies at the frameworks, as for euptex
+          otool -L Frameworks/$f.framework/$f | awk 'NR>1 {print $1}' | while read -r dep; do
+            case "$dep" in
+              *libkpathsea*) install_name_tool -change "$dep" @rpath/kpathsea.framework/kpathsea Frameworks/$f.framework/$f ;;
+              *libptexenc*) install_name_tool -change "$dep" @rpath/ptexenc.framework/ptexenc Frameworks/$f.framework/$f ;;
+            esac
+          done
+          otool -L Frameworks/$f.framework/$f
+          nm -gU Frameworks/$f.framework/$f | grep -E ' _(main|mainbody)$'
+          rm -rf $f.xcframework
+          xcodebuild -create-xcframework -framework Frameworks/$f.framework -output $f.xcframework
+
       - name: Check
         working-directory: tl
         run: |
           ls -d *.xcframework || true
           status=0
-          for f in euptex ptexenc xdvipdfmx kpathsea; do
+          for f in euptex ptexenc xdvipdfmx kpathsea upbibtex; do
             if [ -d "$f.xcframework" ]; then
               file "$f.xcframework"/*/"$f.framework/$f"
             else
@@ -99,6 +131,7 @@ jobs:
             [ -d "$d" ] && [ "$d" != ios_system.xcframework ] && zip -qry "../out/$d.zip" "$d"
           done
           cp build_cross.log ../out/ 2>/dev/null || true
+          cp upbibtex_build.log ../out/ 2>/dev/null || true
           cd ../out && ls && (shasum -a 256 *.zip > SHA256SUMS || true)
 
       - uses: actions/upload-artifact@v4
